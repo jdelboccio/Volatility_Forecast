@@ -15,7 +15,6 @@ Flask==3.1.0
 flask-cors==5.0.1
 fredapi==0.5.2
 frozendict==2.4.6
-future @ file:///AppleInternal/Library/BuildRoots/2c89a47b-9dd5-11ef-938f-6e654a286000/Library/Caches/com.apple.xbs/Sources/python3/future-0.18.2-py3-none-any.whl
 gitdb==4.0.12
 GitPython==3.1.44
 idna==3.10
