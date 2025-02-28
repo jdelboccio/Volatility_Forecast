@@ -61,10 +61,12 @@ if missing_columns:
 
 # Make Predictions
 X_lstm = np.expand_dims(processed_data['log_return'].values[-30:], axis=0)
-if X_lstm.shape[1] == 0:
-    raise ValueError("Insufficient data for LSTM prediction. Ensure 'log_return' column has enough data.")
+
+if X_lstm.shape[1] < 30:
+    raise ValueError(f"Insufficient data for LSTM prediction. Needed: 30, Found: {X_lstm.shape[1]}")
 
 lstm_pred = lstm_model.predict(X_lstm)[0][0]
+
 
 X_rf = processed_data[['log_return', 'GDP', 'Interest_Rates', 'P/E', 'Sentiment_Score']].iloc[-1]
 rf_pred = rf_model.predict([X_rf.values])[0]

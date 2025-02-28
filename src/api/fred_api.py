@@ -1,29 +1,22 @@
-import pandas as pd
 import requests
+import pandas as pd
 
-def fetch_fred_data(indicators):
-    """
-    Fetches economic indicators from the Federal Reserve Economic Data (FRED) API.
+FRED_API_KEY = "624bac6373fd1a4120556dd9a0beba3e"  # Ensure correct key
 
-    :param indicators: List of FRED indicators to fetch.
-    :return: DataFrame containing the fetched data.
-    """
+def fetch_fred_data(series_id):
     try:
-        base_url = "https://api.stlouisfed.org/fred/series/observations"
-        api_key = "624bac6373fd1a4120556dd9a0beba3e"  
+        url = f"https://api.stlouisfed.org/fred/series/observations?series_id={series_id}&api_key={FRED_API_KEY}&file_type=json"
+        response = requests.get(url).json()
 
-        data = []
-        for indicator in indicators:
-            response = requests.get(
-                f"{base_url}?series_id={indicator}&api_key={api_key}&file_type=json"
-            )
-            json_data = response.json()
+        if 'observations' not in response:
+            raise ValueError(f"Invalid FRED response: {response}")
 
-            for obs in json_data["observations"]:
-                data.append({"indicator": indicator, "date": obs["date"], "value": obs["value"]})
+        df = pd.DataFrame(response['observations'])
+        if 'value' not in df.columns:
+            raise ValueError("Missing 'value' field in FRED data")
 
-        return pd.DataFrame(data)
-
+        df = df[['date', 'value']].rename(columns={'value': series_id})  # Rename column to series ID
+        return df
     except Exception as e:
         print(f"Error fetching FRED data: {e}")
-        return pd.DataFrame()
+        return pd.DataFrame()  # Return empty DataFrame on failure
