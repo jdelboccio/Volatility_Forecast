@@ -1,19 +1,21 @@
 import praw
 
-REDDIT_CLIENT_ID = "YrhlHjfVx_gA_Gxxd3tuYg"
-REDDIT_SECRET = "T0pf2vkPLfJtpb7NYsmIrfoPmr9FNQ"
-USER_AGENT = "volatility_sentiment_analyzer"
+REDDIT_CLIENT_ID = "Your-Reddit-Client-ID"
+REDDIT_SECRET = "Your-Reddit-Secret"
+REDDIT_USER_AGENT = "VolatilitySentimentAnalyzer"
 
-def get_reddit_sentiment(subreddit, query):
-    """Fetch top Reddit posts mentioning a stock."""
-    reddit = praw.Reddit(
-        client_id=REDDIT_CLIENT_ID,
-        client_secret=REDDIT_SECRET,
-        user_agent=USER_AGENT
-    )
+reddit = praw.Reddit(
+    client_id=REDDIT_CLIENT_ID,
+    client_secret=REDDIT_SECRET,
+    user_agent=REDDIT_USER_AGENT
+)
+
+def get_reddit_sentiment(subreddit, keyword):
+    subreddit = reddit.subreddit(subreddit)
+    posts = subreddit.search(keyword, limit=10)
     
-    posts = []
-    for post in reddit.subreddit(subreddit).search(query, limit=5):
-        posts.append((post.title, post.score, post.url))
-    
-    return posts
+    for post in posts:
+        print(post.title, post.score)
+
+if __name__ == "__main__":
+    get_reddit_sentiment("stocks", "Tesla")

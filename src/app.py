@@ -1,75 +1,117 @@
 import streamlit as st
 import pandas as pd
-import numpy as np
-import plotly.express as px
 import yfinance as yf
+import praw
 import requests
-import shap
-import xgboost as xgb
-import tensorflow as tf
-from tensorflow.keras.models import Sequential
-from tensorflow.keras.layers import LSTM, Dense, Dropout
-from sklearn.model_selection import train_test_split, GridSearchCV
-from sklearn.preprocessing import MinMaxScaler
-from sklearn.metrics import mean_squared_error, mean_absolute_percentage_error
+import datetime
+import plotly.express as px
+import os
 
-# Streamlit Performance Optimization
-@st.cache_data
+# API KEYS (Ensure these are stored securely, ideally in environment variables)
+FRED_API_KEY = "624bac6373fd1a4120556dd9a0beba3e"
+SEC_EDGAR_API_KEY = "99be306db2183c302f5a228ae3a03f516e515c0b15957f0002455cf7673f9471"
+ALPHA_VANTAGE_API_KEY = "EOQ4JR8FDI9F3I8B"
+NEWS_API_KEY = "1fb155db44f6415dbf0c5d3561f7fcef"
+REDDIT_CLIENT_ID = "YrhlHjfVx_gA_Gxxd3tuYg"
+REDDIT_CLIENT_SECRET = "T0pf2vkPLfJtpb7NYsmIrfoPmr9FNQ"
+REDDIT_USER_AGENT = "volatility_sentiment"
+
+# Function to fetch stock data
 def fetch_stock_data(ticker):
     stock = yf.Ticker(ticker)
     hist = stock.history(period="6mo")
-    return hist.reset_index()[["Date", "Close"]]
+    return hist
+
+# Function to fetch economic indicators from FRED API
+def fetch_fred_data(series_id):
+    url = f"https://api.stlouisfed.org/fred/series/observations?series_id={series_id}&api_key={FRED_API_KEY}&file_type=json"
+    response = requests.get(url)
+    data = response.json()
+    df = pd.DataFrame(data['observations'])
+    df['value'] = df['value'].astype(float)
+    df['date'] = pd.to_datetime(df['date'])
+    return df
+
+# Function to fetch financial statements from SEC EDGAR API
+def fetch_sec_filings(ticker):
+    url = f"https://data.sec.gov/submissions/CIK{ticker}.json"
+    headers = {"User-Agent": "Mozilla/5.0"}
+    response = requests.get(url, headers=headers)
+    if response.status_code == 200:
+        return response.json()
+    return None
+
+# Function to fetch news data
+def fetch_news_data(query):
+    url = f"https://newsapi.org/v2/everything?q={query}&apiKey={NEWS_API_KEY}"
+    response = requests.get(url)
+    return response.json()
+
+# Function to fetch sentiment analysis from Reddit
+def fetch_reddit_sentiment(ticker):
+    reddit = praw.Reddit(
+        client_id=REDDIT_CLIENT_ID,
+        client_secret=REDDIT_CLIENT_SECRET,
+        user_agent=REDDIT_USER_AGENT
+    )
+    
+    subreddit = reddit.subreddit("stocks")
+    mentions = []
+    
+    for post in subreddit.search(ticker, limit=10):
+        mentions.append({"title": post.title, "score": post.score, "created": datetime.datetime.fromtimestamp(post.created)})
+
+    return pd.DataFrame(mentions)
 
 # Streamlit UI
-st.set_page_config(page_title="Equity Volatility Forecasting", layout="wide")
-st.title("Equity Volatility Forecasting")
-st.write("Enter an equity ticker to forecast volatility using Fundamentals, Valuation, and Sentiment factors.")
+st.title("Volatility Forecasting Dashboard")
 
-ticker = st.text_input("Enter Stock Ticker (e.g., AAPL, TSLA)", "AAPL")
-st.write(f"Showing data for: {ticker}")
+# User input for stock ticker
+ticker = st.text_input("Enter Stock Ticker:", "AAPL")
 
-# Fetch stock data with a spinner
-with st.spinner("Fetching stock data..."):
+if ticker:
+    st.subheader(f"Stock Data for {ticker}")
+    
+    # Fetch stock data
     stock_data = fetch_stock_data(ticker)
+    st.write(stock_data.tail())
 
-if stock_data is not None and not stock_data.empty:
-    fig = px.line(stock_data, x="Date", y="Close", title=f"Stock Price Trend: {ticker}")
-    st.plotly_chart(fig, use_container_width=True)
-else:
-    st.error("Could not fetch stock data. Please check the ticker.")
+    # Plot stock closing prices
+    fig = px.line(stock_data, x=stock_data.index, y="Close", title=f"{ticker} Stock Closing Prices")
+    st.plotly_chart(fig)
 
-# Fetch and scale real data (to replace mock data)
-data = pd.DataFrame({
-    "Date": pd.date_range(start="2023-01-01", periods=100, freq='D'),
-    "Volatility": np.random.uniform(0.1, 0.5, size=100),
-    "Fundamentals": np.random.uniform(0.2, 0.6, size=100),
-    "Valuation": np.random.uniform(0.3, 0.7, size=100),
-    "Sentiment": np.random.uniform(0.1, 0.9, size=100)
-})
+    # Fetch economic indicators
+    st.subheader("Economic Indicators")
+    fred_data = fetch_fred_data("GDP")
+    st.write(fred_data.tail())
 
-# Train Optimized XGBoost model and compute SHAP values
-X = data[["Fundamentals", "Valuation", "Sentiment"]]
-y = data["Volatility"]
-xgb_model = xgb.XGBRegressor(n_estimators=100, learning_rate=0.1, max_depth=5, objective='reg:squarederror')
-xgb_model.fit(X, y)
-explainer = shap.Explainer(xgb_model)
-shap_values = explainer(shap.sample(X, 50))
+    # Fetch SEC filings
+    st.subheader("Recent SEC Filings")
+    sec_filings = fetch_sec_filings(ticker)
+    if sec_filings:
+        st.write(sec_filings)
+    else:
+        st.write("No SEC filings found.")
 
-# UI Layout Improvements
-col1, col2 = st.columns(2)
+    # Fetch news sentiment
+    st.subheader("News Sentiment")
+    news_data = fetch_news_data(ticker)
+    if news_data.get("articles"):
+        for article in news_data["articles"][:5]:
+            st.write(f"**{article['title']}**")
+            st.write(f"_{article['source']['name']}_ - {article['publishedAt']}")
+            st.write(f"[Read More]({article['url']})")
+    else:
+        st.write("No news articles found.")
 
-with col1:
-    st.write("Factor Influence on Volatility")
-    fig3d = px.scatter_3d(data, x="Fundamentals", y="Valuation", z="Sentiment", color="Volatility", title="Factor Influence on Volatility")
-    st.plotly_chart(fig3d, use_container_width=True)
+    # Fetch Reddit sentiment
+    st.subheader("Reddit Sentiment")
+    reddit_data = fetch_reddit_sentiment(ticker)
+    if not reddit_data.empty:
+        st.write(reddit_data)
+    else:
+        st.write("No mentions found.")
 
-with col2:
-    st.write("Feature Importance (SHAP vs. XGBoost)")
-    shap_df = pd.DataFrame(shap_values.values, columns=["Fundamentals", "Valuation", "Sentiment"]).mean()
-    st.bar_chart(shap_df)
+st.sidebar.header("About")
+st.sidebar.info("This dashboard integrates stock, economic, financial, and sentiment data to provide a holistic volatility forecast.")
 
-    feature_importance = pd.Series(xgb_model.feature_importances_, index=["Fundamentals", "Valuation", "Sentiment"])
-    st.write("XGBoost Feature Importance")
-    st.bar_chart(feature_importance)
-
-st.success("Model and UI optimized. Predictions are running smoothly!")
