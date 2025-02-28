@@ -2,44 +2,29 @@ import pandas as pd
 import numpy as np
 from sklearn.ensemble import RandomForestRegressor
 from sklearn.model_selection import train_test_split
-from sklearn.metrics import mean_squared_error
+from sklearn.metrics import mean_absolute_error
+
+# Load and preprocess data
+data = pd.read_csv("data/stock_data.csv")
+processed_data = prepare_features(data)
+
+# Feature selection (Include Fundamentals, Valuation, Sentiment)
+feature_cols = ['log_return', 'GDP', 'Interest_Rates', 'P/E', 'Sentiment_Score']
+target_col = 'future_vol'
+
+# Train/Test Split
+X_train, X_test, y_train, y_test = train_test_split(
+    processed_data[feature_cols], processed_data[target_col], test_size=0.2, random_state=42
+)
+
+# Train Random Forest Model
+rf_model = RandomForestRegressor(n_estimators=100, random_state=42)
+rf_model.fit(X_train, y_train)
+
+# Evaluate Model
+preds = rf_model.predict(X_test)
+print("MAE:", mean_absolute_error(y_test, preds))
+
+# Save Model
 import joblib
-
-def train_random_forest(data: pd.DataFrame, target_column: str, model_path: str = "random_forest_model.pkl"):
-    """
-    Train a Random Forest model for short-term volatility forecasting.
-
-    :param data: DataFrame containing features and target volatility.
-    :param target_column: The column to predict (volatility).
-    :param model_path: Path to save the trained model.
-    """
-    # Drop rows with missing values
-    data = data.dropna()
-
-    # Define Features (X) and Target (y)
-    X = data.drop(columns=[target_column])
-    y = data[target_column]
-
-    # Split Data (80% Training, 20% Testing)
-    X_train, X_test, y_train, y_test = train_test_split(X, y, test_size=0.2, random_state=42)
-
-    # Initialize and Train Random Forest Model
-    model = RandomForestRegressor(n_estimators=100, random_state=42)
-    model.fit(X_train, y_train)
-
-    # Evaluate Model
-    predictions = model.predict(X_test)
-    error = mean_squared_error(y_test, predictions)
-
-    print(f"Random Forest Model Error (MSE): {error}")
-
-    # Save Model
-    joblib.dump(model, model_path)
-    print(f"Model saved to {model_path}")
-
-    return model
-
-if __name__ == "__main__":
-    # Example usage (replace with actual dataset)
-    df = pd.read_csv("../data/volatility_data.csv")  # Ensure you have this dataset
-    model = train_random_forest(df, target_column="volatility_10d")
+joblib.dump(rf_model, "models/random_forest_volatility.pkl")

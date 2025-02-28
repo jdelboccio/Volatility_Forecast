@@ -2,67 +2,48 @@ import numpy as np
 import pandas as pd
 import tensorflow as tf
 from tensorflow.keras.models import Sequential
-from tensorflow.keras.layers import LSTM, Dense
+from tensorflow.keras.layers import LSTM, Dense, Dropout
 from sklearn.preprocessing import MinMaxScaler
-import joblib
 
-def create_sequences(data, sequence_length=10):
-    """
-    Create sequences for LSTM model.
+# Load and preprocess data
+data = pd.read_csv("data/stock_data.csv")
+processed_data = prepare_features(data)
 
-    :param data: DataFrame with time-series data.
-    :param sequence_length: Number of time steps to look back.
-    :return: Sequences (X) and Targets (y).
-    """
+# Feature selection
+feature_cols = ['log_return']  # Add more macro/valuation/sentiment features if needed
+target_col = 'future_vol'
+
+# Scale data
+scaler = MinMaxScaler()
+scaled_features = scaler.fit_transform(processed_data[feature_cols])
+
+# Prepare rolling sequences
+def create_sequences(data, target, seq_length=30):
     X, y = [], []
-    for i in range(len(data) - sequence_length):
-        X.append(data[i:i+sequence_length])
-        y.append(data[i+sequence_length])
+    for i in range(len(data) - seq_length):
+        X.append(data[i:i+seq_length])
+        y.append(target[i+seq_length])  # Predict future 10-day vol
     return np.array(X), np.array(y)
 
-def train_lstm_model(data: pd.DataFrame, target_column: str, model_path: str = "lstm_model.h5"):
-    """
-    Train an LSTM model for volatility forecasting.
+X, y = create_sequences(scaled_features, processed_data[target_col])
 
-    :param data: DataFrame containing time-series data.
-    :param target_column: The column to predict (volatility).
-    :param model_path: Path to save the trained model.
-    """
-    data = data[[target_column]].dropna()
+# Train/Test Split
+split = int(0.8 * len(X))
+X_train, X_test = X[:split], X[split:]
+y_train, y_test = y[:split], y[split:]
 
-    # Scale Data
-    scaler = MinMaxScaler()
-    scaled_data = scaler.fit_transform(data)
+# Define LSTM model
+model = Sequential([
+    LSTM(50, return_sequences=True, input_shape=(X.shape[1], X.shape[2])),
+    Dropout(0.2),
+    LSTM(50),
+    Dropout(0.2),
+    Dense(1)
+])
 
-    # Create Sequences
-    sequence_length = 10
-    X, y = create_sequences(scaled_data, sequence_length)
+# Compile model
+model.compile(optimizer='adam', loss='mse')
+model.fit(X_train, y_train, epochs=20, batch_size=16, validation_data=(X_test, y_test))
 
-    # Split Data
-    train_size = int(len(X) * 0.8)
-    X_train, X_test, y_train, y_test = X[:train_size], X[train_size:], y[:train_size], y[train_size:]
-
-    # Define LSTM Model
-    model = Sequential([
-        LSTM(50, return_sequences=True, input_shape=(sequence_length, 1)),
-        LSTM(50, return_sequences=False),
-        Dense(25, activation="relu"),
-        Dense(1)
-    ])
-
-    model.compile(optimizer="adam", loss="mse")
-    
-    # Train Model
-    model.fit(X_train, y_train, epochs=20, batch_size=16, validation_data=(X_test, y_test))
-
-    # Save Model & Scaler
-    model.save(model_path)
-    joblib.dump(scaler, "scaler.pkl")
-    
-    print(f"LSTM Model saved to {model_path}")
-
-    return model
-
-if __name__ == "__main__":
-    df = pd.read_csv("../data/volatility_data.csv")
-    train_lstm_model(df, target_column="volatility_10d")
+# Save model
+model.save("models/lstm_volatility.h5")
