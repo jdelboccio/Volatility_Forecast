@@ -125,4 +125,3 @@ if ticker:
 
 st.sidebar.header("About")
 st.sidebar.info("This dashboard integrates stock, economic, financial, and sentiment data to provide a holistic volatility forecast.")
-
