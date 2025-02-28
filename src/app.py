@@ -27,10 +27,21 @@ def fetch_fred_data(series_id):
     url = f"https://api.stlouisfed.org/fred/series/observations?series_id={series_id}&api_key={FRED_API_KEY}&file_type=json"
     response = requests.get(url)
     data = response.json()
+
     df = pd.DataFrame(data['observations'])
-    df['value'] = df['value'].astype(float)
-    df['date'] = pd.to_datetime(df['date'])
+
+    print("DEBUG: Raw Data from FRED API:\n", df.head())
+
+    # Convert to float safely, setting errors='coerce' to replace invalid values with NaN
+    df['value'] = pd.to_numeric(df['value'], errors='coerce')
+
+    # Drop rows where 'value' is NaN
+    df.dropna(subset=['value'], inplace=True)
+
+    print("DEBUG: Converted Data:\n", df.head())
+
     return df
+
 
 # Function to fetch financial statements from SEC EDGAR API
 def fetch_sec_filings(ticker):
