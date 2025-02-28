@@ -2,15 +2,15 @@ import streamlit as st
 import pandas as pd
 import matplotlib.pyplot as plt
 
-# Load Data Functions (Fixed imports)
-from src.api.yahoo_finance_api import fetch_stock_data  # FIXED: Use Yahoo API for stock data
-from src.api.fred_api import fetch_fred_data
-from src.api.sec_api import fetch_sec_filings
-from src.api.news_api import fetch_news_sentiment
-from src.api.reddit_api import fetch_reddit_sentiment
+# Load Data Functions
+from api.yahoo_finance_api import fetch_stock_data
+from api.fred_api import fetch_fred_data
+from api.sec_api import fetch_sec_filings
+from api.news_api import fetch_news_sentiment
+from api.reddit_api import fetch_reddit_sentiment
 
 # Load Model Functions
-from src.models.final_volatility_forecast import compute_final_forecast
+from models.final_volatility_forecast import compute_final_forecast
 
 # Streamlit Page Configuration
 st.set_page_config(page_title="Volatility Forecasting Dashboard", layout="wide")
@@ -21,80 +21,76 @@ st.title("Volatility Forecasting Dashboard")
 # Stock Ticker Input
 ticker = st.text_input("Enter Stock Ticker:", "AAPL")
 
-# Stock Price Data
+# Fetch Stock Price Data
 st.subheader(f"Stock Data for {ticker}")
-
 try:
     stock_data = fetch_stock_data(ticker)
-    if stock_data is not None and not stock_data.empty:
-        st.dataframe(stock_data.head())
-
-        # Stock Price Chart
-        fig, ax = plt.subplots()
-        ax.plot(stock_data.index, stock_data["Close"], color="cyan")  # Fixed column name
-        ax.set_title(f"{ticker} Stock Closing Prices")
-        ax.set_xlabel("Date")
-        ax.set_ylabel("Close Price")
-        st.pyplot(fig)
+    if stock_data.empty:
+        st.warning(f"No stock data found for {ticker}. Please check the ticker symbol.")
     else:
-        st.warning(f"No stock data found for {ticker}.")
+        st.line_chart(stock_data['Close'])
 except Exception as e:
     st.error(f"Error fetching stock data: {e}")
 
-# Economic Indicators
-st.subheader("Economic Indicators")
+# Fetch FRED Data
+st.subheader("FRED Economic Data")
 try:
-    fred_data = fetch_fred_data(["GDP", "Interest_Rates", "Inflation", "Unemployment"])
-    if fred_data is not None and not fred_data.empty:
-        st.dataframe(fred_data)
-    else:
-        st.warning("No economic indicator data available.")
+    gdp_data = fetch_fred_data("GDP")
+    interest_rate_data = fetch_fred_data("DGS10")
+    inflation_data = fetch_fred_data("CPIAUCSL")
+    unemployment_data = fetch_fred_data("UNRATE")
+    
+    st.write("GDP Data")
+    st.line_chart(gdp_data['value'])
+    
+    st.write("10-Year Treasury Yield")
+    st.line_chart(interest_rate_data['value'])
+    
+    st.write("Inflation (CPI)")
+    st.line_chart(inflation_data['value'])
+    
+    st.write("Unemployment Rate")
+    st.line_chart(unemployment_data['value'])
 except Exception as e:
-    st.error(f"Error fetching economic indicators: {e}")
+    st.error(f"Error fetching FRED data: {e}")
 
-# Recent SEC Filings
-st.subheader("Recent SEC Filings")
+# Fetch SEC Filings
+st.subheader("SEC Filings")
 try:
     sec_filings = fetch_sec_filings(ticker)
-    if sec_filings is not None and not sec_filings.empty:
-        st.dataframe(sec_filings)
+    if sec_filings.empty:
+        st.warning(f"No SEC filings found for {ticker}.")
     else:
-        st.write("No SEC filings found.")
+        st.write(sec_filings)
 except Exception as e:
     st.error(f"Error fetching SEC filings: {e}")
 
-# News Sentiment Analysis
+# Fetch News Sentiment
 st.subheader("News Sentiment")
 try:
     news_sentiment = fetch_news_sentiment(ticker)
-    if news_sentiment is not None and not news_sentiment.empty:
-        st.dataframe(news_sentiment)
+    if news_sentiment.empty:
+        st.warning(f"No news sentiment data found for {ticker}.")
     else:
-        st.warning("No news sentiment data available.")
+        st.write(news_sentiment)
 except Exception as e:
     st.error(f"Error fetching news sentiment: {e}")
 
-# Reddit Sentiment Analysis
+# Fetch Reddit Sentiment
 st.subheader("Reddit Sentiment")
 try:
     reddit_sentiment = fetch_reddit_sentiment(ticker)
-    if reddit_sentiment is not None and not reddit_sentiment.empty:
-        st.dataframe(reddit_sentiment)
+    if reddit_sentiment.empty:
+        st.warning(f"No Reddit sentiment data found for {ticker}.")
     else:
-        st.warning("No Reddit sentiment data available.")
+        st.write(reddit_sentiment)
 except Exception as e:
     st.error(f"Error fetching Reddit sentiment: {e}")
 
-# Final Volatility Forecast
-st.subheader("Final Volatility Forecast")
+# Compute Final Volatility Forecast
+st.subheader("Volatility Forecast")
 try:
-    df_forecast = compute_final_forecast(ticker)
-    if df_forecast is not None and not df_forecast.empty:
-        st.dataframe(df_forecast)
-    else:
-        st.warning("No forecast data available.")
+    forecast = compute_final_forecast(ticker)
+    st.write(f"10-Day Volatility Forecast for {ticker}: {forecast:.2f}%")
 except Exception as e:
-    st.error(f"Error computing final forecast: {e}")
-
-# Dashboard Footer
-st.markdown("Built for Machine Learning-Based Equity Volatility Forecasting")
+    st.error(f"Error computing volatility forecast: {e}")

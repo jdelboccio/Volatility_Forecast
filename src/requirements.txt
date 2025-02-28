@@ -10,3 +10,4 @@ xgboost
 tensorflow
 scikit-learn
 arch
+matplotlib

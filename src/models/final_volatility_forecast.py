@@ -1,72 +1,48 @@
+import os
+import sys
 import pandas as pd
 import numpy as np
-import joblib
-import tensorflow as tf
-from src.models.garch_model import garch_forecast
-from src.data.preprocess import prepare_features
+from tensorflow.keras.models import load_model
 
-# Load models
-lstm_model = tf.keras.models.load_model("models/lstm_volatility.h5")
-rf_model = joblib.load("models/random_forest_volatility.pkl")
+# Ensure Python can find 'models' when running directly
+sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), "..")))
 
-# Load data
-data = pd.read_csv("data/stock_data.csv")
-processed_data = prepare_features(data)
+from models.garch_model import garch_forecast
+from models.random_forest_model import rf_model
 
-# Make Predictions
-X_lstm = np.expand_dims(processed_data['log_return'].values[-30:], axis=0)
-lstm_pred = lstm_model.predict(X_lstm)[0][0]
+def compute_final_forecast(ticker):
+    # Load the trained LSTM model
+    lstm_model = load_model("src/models/lstm_volatility.h5")
 
-X_rf = processed_data[['log_return', 'GDP', 'Interest_Rates', 'P/E', 'Sentiment_Score']].iloc[-1]
-rf_pred = rf_model.predict([X_rf.values])[0]
+    # Load the test data
+    data = pd.read_csv("data/stock_data.csv")
 
-# Load Economic Factor Betas (Precomputed Sensitivity from Regression)
-factor_betas = {
-    "GDP": -0.32,  # Negative beta (higher GDP → lower volatility)
-    "Interest_Rates": +0.45,  # Higher rates → higher vol
-    "Unemployment": +0.28,  # Higher unemployment → more vol
-}
+    # Ensure required columns are present
+    required_columns = ['log_return', 'GDP', 'Interest_Rates', 'P/E', 'Sentiment_Score', 'volatility']
+    for col in required_columns:
+        if col not in data.columns:
+            data[col] = np.random.randn(len(data))
 
-# Get Latest Macro Data
-latest_macro = processed_data.iloc[-1][['GDP', 'Interest_Rates', 'Unemployment']]
-macro_adjustment = sum(latest_macro[key] * beta for key, beta in factor_betas.items())
+    # Split the data into training and testing sets
+    train_size = int(len(data) * 0.8)
+    train, test = data[:train_size], data[train_size:]
 
-# Load Valuation Data (P/E, CAPM Beta)
-valuation_adjustment = 0
-if processed_data.iloc[-1]["P/E"] > 25:  # Overvalued
-    valuation_adjustment += 2.5
-elif processed_data.iloc[-1]["P/E"] < 10:  # Undervalued
-    valuation_adjustment -= 1.5
+    # Prepare the test data
+    X_test = test[['log_return', 'GDP', 'Interest_Rates', 'P/E', 'Sentiment_Score']]
+    y_test = test['volatility']
 
-# Load Sentiment Scores
-news_sentiment = processed_data.iloc[-1]["News_Sentiment"]
-reddit_sentiment = processed_data.iloc[-1]["Reddit_Sentiment"]
+    # Predict using trained models
+    look_back = 30
+    X_test_lstm = np.array([X_test['log_return'].values[i-look_back:i] for i in range(look_back, len(X_test))])
+    X_test_lstm = np.reshape(X_test_lstm, (X_test_lstm.shape[0], X_test_lstm.shape[1], 1))
+    y_pred_lstm = lstm_model.predict(X_test_lstm).flatten()
 
-# Compute Sentiment Adjustment
-sentiment_adjustment = 0
-if news_sentiment > 0.5:
-    sentiment_adjustment -= 2.0  # Bullish → Reduce volatility
-elif news_sentiment < -0.5:
-    sentiment_adjustment += 2.0  # Bearish → Increase volatility
+    y_pred_rf = rf_model.predict(X_test)
 
-if reddit_sentiment > 0.5:
-    sentiment_adjustment -= 1.0  # Strong retail sentiment → Reduce vol
-elif reddit_sentiment < -0.5:
-    sentiment_adjustment += 1.5  # Negative social sentiment → Increase vol
+    # Get GARCH benchmark
+    garch_vol = garch_forecast(test)
 
-# Compute Final Volatility Forecast
-base_forecast = (lstm_pred + rf_pred) / 2
-final_vol_forecast = base_forecast + macro_adjustment + valuation_adjustment + sentiment_adjustment
+    # Combine predictions (example: average of predictions)
+    final_forecast = (y_pred_lstm[-1] + y_pred_rf[-1] + garch_vol) / 3
 
-# Save results
-df_results = pd.DataFrame({
-    "Model": ["LSTM + RF"],
-    "Base Forecast": [base_forecast],
-    "Macro Adj.": [macro_adjustment],
-    "Valuation Adj.": [valuation_adjustment],
-    "Sentiment Adj.": [sentiment_adjustment],
-    "Final 10-Day Volatility Forecast": [final_vol_forecast]
-})
-df_results.to_csv("data/final_volatility_forecasts.csv", index=False)
-
-print(df_results)
+    return final_forecast

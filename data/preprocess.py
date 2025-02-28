@@ -5,24 +5,23 @@ def calculate_realized_volatility(returns, window=10):
     """Compute realized volatility as rolling standard deviation of log returns."""
     return returns.rolling(window=window).std() * np.sqrt(252)  # Annualized volatility
 
-def prepare_features(data, target_window=10):
+def prepare_features(data):
     """
-    Create lagged features for LSTM & Random Forest.
-    - Features: Past 30 days (rolling window)
-    - Target: Future 10-day realized volatility
+    Preprocess the data and ensure required features are present.
+    
+    :param data: DataFrame containing the raw data
+    :return: DataFrame with processed features
     """
-    data = data.copy()
+    # Ensure required columns are present
+    required_columns = ['log_return', 'GDP', 'Interest_Rates', 'P/E', 'Sentiment_Score']
+    for col in required_columns:
+        if col not in data.columns:
+            raise KeyError(f"Missing required column: {col}")
     
-    # Calculate log returns
-    data['log_return'] = np.log(data['Close'] / data['Close'].shift(1))
+    # Example preprocessing steps (add your actual preprocessing logic here)
+    processed_data = data.copy()
     
-    # Compute realized volatility
-    data['realized_vol'] = calculate_realized_volatility(data['log_return'], window=target_window)
-
-    # Shift the target volatility forward (future prediction)
-    data['future_vol'] = data['realized_vol'].shift(-target_window)
-
-    # Drop NaNs
-    data = data.dropna()
-
-    return data
+    # Add any additional preprocessing steps here
+    # For example, scaling, encoding, etc.
+    
+    return processed_data

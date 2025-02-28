@@ -1,21 +1,38 @@
+import os
+import sys
 import pandas as pd
 from vaderSentiment.vaderSentiment import SentimentIntensityAnalyzer
-from src.api.news_api import fetch_latest_news
+
+# Ensure Python can find 'src' when running directly
+sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), "../..")))
+
+from news_api import fetch_news_sentiment  # Importing the function from news_api.py
 
 analyzer = SentimentIntensityAnalyzer()
 
-def get_news_sentiment():
+def get_news_sentiment(ticker):
     """Fetch latest news and compute sentiment scores."""
-    news = fetch_latest_news()
+    news = fetch_news_sentiment(ticker)
+    print(news)  # Debug print to see the structure of news
     
     results = []
     for article in news:
-        sentiment_score = analyzer.polarity_scores(article["headline"])['compound']
+        print(article)  # Debug print to see each article
+        if isinstance(article, dict):
+            headline = article["headline"]
+            date = article["date"]
+            source = article["source"]
+        else:
+            headline = article
+            date = "Unknown"
+            source = "Unknown"
+        
+        sentiment_score = analyzer.polarity_scores(headline)['compound']
         volatility_change = round(-sentiment_score * 3, 2)  # Example: Strong negative news ↑ vol, positive ↓ vol
         results.append({
-            "Date": article["date"],
-            "Source": article["source"],
-            "Headline": article["headline"],
+            "Date": date,
+            "Source": source,
+            "Headline": headline,
             "Sentiment Score": sentiment_score,
             "Expected Volatility Change": f"{volatility_change}%"
         })
@@ -25,4 +42,5 @@ def get_news_sentiment():
     return df_news
 
 # Run sentiment analysis
-get_news_sentiment()
+ticker = "AAPL"  # Example ticker symbol
+get_news_sentiment(ticker)
