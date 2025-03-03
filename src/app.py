@@ -5,27 +5,27 @@ import plotly.express as px
 import shap
 import matplotlib.pyplot as plt
 
-# Load Data Functions
+# ✅ Import Data Fetching Functions
 from api.yahoo_finance_api import fetch_stock_data
 from api.fred_api import fetch_fred_data
 from api.sec_api import fetch_sec_filings
 from api.news_api import fetch_news_sentiment
 from api.reddit_api import fetch_reddit_sentiment
 
-# Load Model Functions
+# ✅ Import Model Functions
 from models.final_volatility_forecast import compute_final_forecast
 from models.lstm_model import predict_volatility
 
-# Streamlit Page Configuration
+# ✅ Streamlit Page Configuration
 st.set_page_config(page_title="Volatility Forecasting Dashboard", layout="wide")
 
-# Dashboard Title
+# 🚀 **Dashboard Title**
 st.title("📊 Volatility Forecasting Dashboard")
 
-# Stock Ticker Input
+# 📌 **Stock Ticker Input**
 ticker = st.text_input("🔍 Enter Stock Ticker:", "AAPL")
 
-# Fetch Stock Data
+# 🚀 **Fetch Stock Data**
 st.subheader(f"📈 Stock Data for {ticker}")
 try:
     stock_data = fetch_stock_data(ticker)
@@ -36,7 +36,7 @@ try:
 except Exception as e:
     st.error(f"❌ Error fetching stock data: {e}")
 
-# Fetch Economic Data
+# 🚀 **Fetch Economic Data**
 st.subheader("📊 Economic Indicators")
 try:
     gdp_data = fetch_fred_data("GDP")
@@ -62,7 +62,7 @@ try:
 except Exception as e:
     st.error(f"❌ Error fetching economic data: {e}")
 
-# Fetch SEC Filings
+# 🚀 **Fetch SEC Filings**
 st.subheader("📝 SEC Filings")
 try:
     sec_filings = fetch_sec_filings(ticker)
@@ -73,7 +73,7 @@ try:
 except Exception as e:
     st.error(f"❌ Error fetching SEC filings: {e}")
 
-# Fetch News Sentiment
+# 🚀 **Fetch News Sentiment**
 st.subheader("📰 News Sentiment")
 try:
     news_sentiment = fetch_news_sentiment(ticker)
@@ -84,7 +84,7 @@ try:
 except Exception as e:
     st.error(f"❌ Error fetching news sentiment: {e}")
 
-# Fetch Reddit Sentiment
+# 🚀 **Fetch Reddit Sentiment**
 st.subheader("📢 Reddit Sentiment")
 try:
     reddit_sentiment = fetch_reddit_sentiment(ticker)
@@ -95,7 +95,7 @@ try:
 except Exception as e:
     st.error(f"❌ Error fetching Reddit sentiment: {e}")
 
-# Compute Final Volatility Forecast
+# 🚀 **Compute Final Volatility Forecast**
 st.subheader("📉 Volatility Forecast")
 try:
     forecast = compute_final_forecast(ticker)
@@ -106,7 +106,7 @@ try:
 except Exception as e:
     st.error(f"❌ Error computing volatility forecast: {e}")
 
-# 3D Factor Weighting Visualization
+# 🚀 **3D Factor Weighting Visualization**
 st.subheader("🟢 3D Factor Weighting Visualization")
 try:
     # Sample weighting values for visualization
@@ -124,7 +124,7 @@ try:
 except Exception as e:
     st.error(f"❌ Error generating 3D visualization: {e}")
 
-# AI Explainability: SHAP Factor Importance
+# 🚀 **AI Explainability: SHAP Factor Importance**
 st.subheader("🧠 AI Explainability: SHAP Factor Importance")
 try:
     # Placeholder SHAP values (Replace with actual computation)
@@ -138,4 +138,5 @@ try:
 except Exception as e:
     st.error(f"❌ Error computing SHAP values: {e}")
 
+# 🎯 **Final Success Message**
 st.success("🚀 Dashboard Loaded Successfully")
