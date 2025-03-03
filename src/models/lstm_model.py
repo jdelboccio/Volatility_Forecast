@@ -6,80 +6,52 @@ from tensorflow.keras.layers import LSTM, Dense
 from sklearn.preprocessing import MinMaxScaler
 import os
 
-# Constants
-LOOK_BACK = 30
-LSTM_MODEL_PATH = "src/models/lstm_volatility.h5"
-DATA_FILE = "data/stock_data.csv"
+MODEL_PATH = "src/models/lstm_volatility.h5"
 
-def create_dataset(dataset, look_back=1):
-    """
-    Convert time series data into supervised learning format.
-    """
+def create_dataset(dataset, look_back=30):
+    """Transforms time-series data into LSTM training format."""
     X, Y = [], []
     for i in range(len(dataset) - look_back - 1):
-        X.append(dataset[i:(i + look_back), 0])
+        a = dataset[i:(i + look_back), 0]
+        X.append(a)
         Y.append(dataset[i + look_back, 0])
     return np.array(X), np.array(Y)
 
-def train_lstm_model():
-    """
-    Train an LSTM model for volatility prediction.
-    """
-    try:
-        # Load and preprocess data
-        data = pd.read_csv(DATA_FILE)
-        if "close" not in data.columns:
-            raise ValueError("❌ Missing 'close' column in stock_data.csv!")
+# Load and preprocess stock data
+data_path = "data/stock_data.csv"
+if not os.path.exists(data_path):
+    raise FileNotFoundError(f"❌ Data file not found: {data_path}")
 
-        # Scale data
-        scaler = MinMaxScaler(feature_range=(0, 1))
-        scaled_data = scaler.fit_transform(data['close'].values.reshape(-1, 1))
+data = pd.read_csv(data_path)
 
-        # Prepare training data
-        X, Y = create_dataset(scaled_data, LOOK_BACK)
-        X = np.reshape(X, (X.shape[0], X.shape[1], 1))
+if 'close' not in data.columns:
+    raise ValueError("❌ Missing 'close' column in stock_data.csv")
 
-        # Build LSTM model
-        model = Sequential()
-        model.add(LSTM(50, return_sequences=True, input_shape=(LOOK_BACK, 1)))
-        model.add(LSTM(50))
-        model.add(Dense(1))
+scaler = MinMaxScaler(feature_range=(0, 1))
+scaled_data = scaler.fit_transform(data['close'].values.reshape(-1, 1))
 
-        # Compile model
-        model.compile(optimizer='adam', loss='mean_squared_error', metrics=["mae"])
+# Prepare training data
+look_back = 30
+X, Y = create_dataset(scaled_data, look_back)
+X = np.reshape(X, (X.shape[0], X.shape[1], 1))
 
-        # Train the model
-        model.fit(X, Y, epochs=20, batch_size=32, verbose=1)
+# Build LSTM model
+lstm_model = Sequential([
+    LSTM(50, return_sequences=True, input_shape=(look_back, 1)),
+    LSTM(50),
+    Dense(1)
+])
 
-        # Save the trained model
-        model.save(LSTM_MODEL_PATH)
-        print("✅ LSTM Model saved successfully!")
+lstm_model.compile(optimizer='adam', loss='mean_squared_error')
 
-    except Exception as e:
-        print(f"❌ Error training LSTM model: {e}")
+# Train the model (only if not already trained)
+if not os.path.exists(MODEL_PATH):
+    print("⚡ Training LSTM model...")
+    lstm_model.fit(X, Y, epochs=20, batch_size=32, verbose=1)
+    lstm_model.save(MODEL_PATH)
+    print("✅ Model trained and saved!")
 
-def predict_volatility(ticker):
-    """
-    Load trained LSTM model and make predictions.
-    """
-    try:
-        # Load trained model
-        model = load_model(LSTM_MODEL_PATH)
-        model.compile(optimizer="adam", loss="mse", metrics=["mae"])
-
-        # Load and preprocess data
-        data = pd.read_csv(DATA_FILE)
-        scaler = MinMaxScaler(feature_range=(0, 1))
-        scaled_data = scaler.fit_transform(data['close'].values.reshape(-1, 1))
-
-        # Prepare input data for prediction
-        X_input = np.array([scaled_data[-LOOK_BACK:]])  # Last 30 days
-        X_input = np.reshape(X_input, (1, LOOK_BACK, 1))
-
-        # Make prediction
-        prediction = model.predict(X_input).flatten() * 100  # ✅ Scaling fix
-        return prediction
-
-    except Exception as e:
-        print(f"❌ Error making LSTM prediction: {e}")
-        return None
+# Load model if already trained
+else:
+    print("🔄 Loading pre-trained model...")
+    lstm_model = load_model(MODEL_PATH)
