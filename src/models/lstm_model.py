@@ -1,90 +1,58 @@
 import numpy as np
-import pandas as pd
-import tensorflow as tf
-from tensorflow.keras.models import Sequential, load_model
-from tensorflow.keras.layers import LSTM, Dense
-from sklearn.preprocessing import MinMaxScaler
-import os
+# Import your ML framework for LSTM (e.g., TensorFlow/Keras) if needed for model loading/training
+# from tensorflow.keras.models import load_model
 
-# Load and preprocess stock data
-data_path = "data/stock_data.csv"
+# Assume the LSTM model is pre-trained and possibly loaded elsewhere.
+# We create a placeholder for a global model instance if one is loaded in this module.
+lstm_model_instance = None
+# e.g., try loading a saved model (path may need to be adjusted or provided by user)
+try:
+    # lstm_model_instance = load_model('lstm_model.h5')
+    pass
+except Exception as e:
+    print(f"Notice: LSTM model not loaded ({e}). It should be loaded or trained before prediction.")
 
-if not os.path.exists(data_path):
-    raise FileNotFoundError(f"❌ Data file not found at: {data_path}")
-
-data = pd.read_csv(data_path)
-
-# Normalize column names to lowercase
-data.columns = data.columns.str.lower()
-
-# Ensure "close" column exists
-if "close" not in data.columns:
-    raise ValueError(f"Missing 'Close' column in stock data. Available columns: {list(data.columns)}")
-
-# Handle missing values by filling with the last valid value
-data["close"].fillna(method="ffill", inplace=True)
-
-# Scale the "close" column
-scaler = MinMaxScaler(feature_range=(0, 1))
-scaled_data = scaler.fit_transform(data["close"].values.reshape(-1, 1))
-
-# Create dataset function
-def create_dataset(dataset, look_back=30):
-    X, Y = [], []
-    for i in range(len(dataset) - look_back):
-        X.append(dataset[i:(i + look_back), 0])
-        Y.append(dataset[i + look_back, 0])
-    return np.array(X), np.array(Y)
-
-# Prepare dataset
-look_back = 30
-X, Y = create_dataset(scaled_data, look_back)
-X = np.reshape(X, (X.shape[0], X.shape[1], 1))
-
-# Check if model is already trained
-model_path = "src/models/lstm_volatility.keras"
-if not os.path.exists(model_path):
-    print("🔄 Training new LSTM model...")
-
-    # Build LSTM model
-    lstm_model = Sequential([
-        LSTM(50, return_sequences=True, input_shape=(look_back, 1)),
-        LSTM(50),
-        Dense(1)
-    ])
-
-    # Compile model
-    lstm_model.compile(optimizer='adam', loss='mean_squared_error', metrics=['mae'])
-
-    # Train model
-    lstm_model.fit(X, Y, epochs=20, batch_size=32, verbose=1)
-
-    # Save model
-    lstm_model.save(model_path)
-else:
-    print("✅ LSTM model found. Skipping training.")
-
-# Function to predict volatility
-def predict_volatility():
+def predict_volatility(model=None, sequence_data=None, scaler=None):
     """
-    Predicts the next 10-day volatility using the trained LSTM model.
+    Predict future volatility using the provided LSTM model and input sequence data.
+    - model: A trained LSTM model (if None, uses the global lstm_model_instance).
+    - sequence_data: Sequence of recent data as a numpy array or list of shape (timesteps, features).
+    - scaler: Tuple (mean, std) or scaler object for inverse transforming the predicted output.
     """
-    try:
-        # Load the trained model
-        model = load_model(model_path)
-
-        # Prepare the last 30 days of data for prediction
-        last_30_days = scaled_data[-look_back:]
-        X_input = np.reshape(last_30_days, (1, look_back, 1))
-
-        # Make prediction
-        y_pred = model.predict(X_input)
-
-        # Rescale prediction back to original scale
-        y_pred_rescaled = scaler.inverse_transform(y_pred.reshape(-1, 1)).flatten()
-
-        return round(y_pred_rescaled[0], 2)
-    
-    except Exception as e:
-        print(f"❌ Error predicting volatility: {e}")
-        return None
+    global lstm_model_instance
+    if sequence_data is None:
+        raise ValueError("sequence_data must be provided for LSTM prediction.")
+    # Use the provided model or default to the global instance
+    model_to_use = model if model is not None else lstm_model_instance
+    if model_to_use is None:
+        raise ValueError("LSTM model is not available. Ensure the model is loaded or passed in.")
+    # Prepare input array
+    seq = np.array(sequence_data, dtype=float)
+    if seq.ndim == 2:
+        # If shape is (timesteps, features), add batch dimension
+        seq = seq.reshape(1, seq.shape[0], seq.shape[1])
+    elif seq.ndim == 1:
+        raise ValueError("sequence_data must have both time step and feature dimensions.")
+    # Make prediction (scaled)
+    pred_scaled = model_to_use.predict(seq)
+    # Extract the scalar prediction value
+    pred_array = np.array(pred_scaled).ravel()
+    if pred_array.size == 0:
+        raise ValueError("LSTM model did not return any prediction.")
+    pred_value_scaled = float(pred_array[0])
+    # Inverse scale the prediction if scaler info is provided
+    if scaler is not None:
+        try:
+            # If scaler is a tuple of (mean, std)
+            if isinstance(scaler, (tuple, list)) and len(scaler) == 2:
+                mean_val, std_val = scaler[0], scaler[1]
+                pred_value = pred_value_scaled * std_val + mean_val
+            else:
+                # If scaler is an object with inverse_transform
+                pred_value = float(scaler.inverse_transform([[pred_value_scaled]])[0][0])
+        except Exception:
+            # If inverse transform fails, fall back to no scaling
+            pred_value = pred_value_scaled
+    else:
+        pred_value = pred_value_scaled
+    return float(pred_value)

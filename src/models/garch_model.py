@@ -1,40 +1,56 @@
-import os
-import sys
+import numpy as np
 import pandas as pd
 from arch import arch_model
 
-# Ensure the script can find 'src' when running directly
-sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), "../..")))
-
-from src.api.yahoo_finance_api import fetch_stock_data  # Now Python will find this module
-
-BASE_DIR = os.path.abspath(os.path.join(os.path.dirname(__file__), "../.."))
-DATA_PATH = os.path.join(BASE_DIR, "data", "stock_data.csv")
-
-def garch_forecast(ticker: str):
+def garch_forecast(returns_series, days_ahead=1):
     """
-    Perform GARCH forecasting on historical stock data.
-
-    :param ticker: Stock ticker symbol (e.g., 'AAPL')
-    :return: Forecasted volatility
+    Fit a GARCH(1,1) model on the provided return series and forecast volatility for the given horizon.
+    returns_series: pandas Series or array of returns.
+    days_ahead: how many days ahead to forecast (default 1).
+    Returns the forecasted volatility (standard deviation) for the next period (or list for multiple days).
     """
-    try:
-        if not os.path.exists(DATA_PATH):
-            print(f"Stock data missing. Fetching data for {ticker}...")
-            stock_data = fetch_stock_data(ticker)
-            os.makedirs(os.path.dirname(DATA_PATH), exist_ok=True)
-            stock_data.to_csv(DATA_PATH, index=False)
-
-        data = pd.read_csv(DATA_PATH)
-        if "close" not in data.columns:
-            raise ValueError("Missing 'close' column in stock data.")
-
-        # GARCH model fitting and forecasting
-        returns = data["close"].pct_change().dropna()
-        model = arch_model(returns, vol="Garch", p=1, q=1)
-        model_fit = model.fit(disp="off")
-        forecast = model_fit.forecast(horizon=10)
-        return forecast.variance.values[-1, :].mean()
-    except Exception as e:
-        print(f"Error in GARCH forecasting: {e}")
-        return None
+    # Convert input to a clean numpy array
+    if returns_series is None:
+        raise ValueError("No returns data provided for GARCH forecast.")
+    if isinstance(returns_series, pd.Series):
+        returns = returns_series.dropna().values.astype(float)
+    else:
+        returns = np.array(returns_series, dtype=float)
+        returns = returns[np.isfinite(returns)]
+    n = len(returns)
+    if n < 2:
+        raise ValueError("Not enough data points for GARCH model.")
+    # Scale returns if very small to help convergence
+    scale_factor = 1.0
+    max_ret = np.max(np.abs(returns))
+    if max_ret < 0.001:
+        scale_factor = 10000.0  # extremely small returns, scale up a lot
+    elif max_ret < 0.01:
+        scale_factor = 100.0
+    returns_scaled = returns * scale_factor
+    # Fit GARCH(1,1) model (with zero mean)
+    am = arch_model(returns_scaled, p=1, q=1, mean='Zero')  # zero mean since we model volatility
+    res = am.fit(disp='off')
+    # Forecast variance for the given horizon
+    forecast = res.forecast(horizon=days_ahead)
+    # Get variance forecast for the latest period
+    var_forecast = forecast.variance.iloc[-1]  # last row (variance for forecasts)
+    if days_ahead == 1:
+        # If one-step ahead, extract single value
+        if hasattr(var_forecast, 'values'):
+            var_pred_scaled = var_forecast.values[0]
+        else:
+            var_pred_scaled = float(var_forecast)
+        vol_pred_scaled = np.sqrt(var_pred_scaled)
+        # Scale back to original returns scale
+        vol_pred = vol_pred_scaled / scale_factor
+        return float(vol_pred)
+    else:
+        # If multiple days ahead, return a list of vols
+        if hasattr(var_forecast, 'values'):
+            var_list = var_forecast.values[:days_ahead]
+        else:
+            var_list = np.array(var_forecast)[:days_ahead]
+        vol_list_scaled = np.sqrt(var_list)
+        vol_list = vol_list_scaled / scale_factor
+        return vol_list.tolist()

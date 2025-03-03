@@ -1,0 +1,14 @@
+import joblib
+import shap
+import numpy as np
+
+# Simulated dataset
+X_train = np.random.rand(100, 5)
+y_train = np.random.rand(100)
+
+# Train a simple SHAP explainer (replace this with your model)
+explainer = shap.Explainer(lambda x: np.mean(x, axis=1), X_train)
+shap_values = explainer(X_train)
+
+# Save the explainer
+joblib.dump(explainer, "models/shap_model.pkl")

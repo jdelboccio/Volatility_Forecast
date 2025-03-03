@@ -1,22 +1,35 @@
 import requests
 import pandas as pd
 
-FRED_API_KEY = "624bac6373fd1a4120556dd9a0beba3e"  # Ensure correct key
+FRED_API_KEY = "your_api_key_here"  # Replace with your actual API key
+FRED_BASE_URL = "https://api.stlouisfed.org/fred/series/observations"
 
 def fetch_fred_data(series_id):
+    """
+    Fetch economic data from the FRED API.
+    """
     try:
-        url = f"https://api.stlouisfed.org/fred/series/observations?series_id={series_id}&api_key={FRED_API_KEY}&file_type=json"
-        response = requests.get(url).json()
+        params = {
+            "series_id": series_id,
+            "api_key": FRED_API_KEY,
+            "file_type": "json"
+        }
+        response = requests.get(FRED_BASE_URL, params=params)
+        data = response.json()
+        
+        if "observations" not in data:
+            raise ValueError(f"Unexpected response format from FRED API: {data}")
 
-        if 'observations' not in response:
-            raise ValueError(f"Invalid FRED response: {response}")
+        df = pd.DataFrame(data["observations"])
+        
+        if "value" not in df.columns:
+            raise ValueError(f"Missing 'value' column in FRED data. Available columns: {list(df.columns)}")
+        
+        df["value"] = pd.to_numeric(df["value"], errors="coerce")  # Convert to numeric
+        df.dropna(inplace=True)
 
-        df = pd.DataFrame(response['observations'])
-        if 'value' not in df.columns:
-            raise ValueError("Missing 'value' field in FRED data")
-
-        df = df[['date', 'value']].rename(columns={'value': series_id})  # Rename column to series ID
         return df
+
     except Exception as e:
         print(f"Error fetching FRED data: {e}")
-        return pd.DataFrame()  # Return empty DataFrame on failure
+        return pd.DataFrame()  # Return empty DataFrame if error occurs
