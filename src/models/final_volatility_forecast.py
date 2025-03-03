@@ -1,54 +1,26 @@
-import os
-import sys
 import numpy as np
-import pandas as pd
-from tensorflow.keras.models import load_model
-
-# Ensure Python can find the 'models' directory
-sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), "..")))
-
 from models.lstm_model import predict_volatility
-from models.garch_model import garch_forecast
-from models.random_forest_model import rf_model
+from models.random_forest_model import compute_rf_volatility
+from models.garch_model import compute_garch_volatility
 
 def compute_final_forecast(ticker):
     """
-    Compute 10-day volatility forecast for a given stock ticker.
+    Compute final volatility forecast by averaging different models.
     """
     try:
-        # Load stock data
-        data = pd.read_csv("data/stock_data.csv")
+        lstm_forecast = predict_volatility(ticker)
+        rf_forecast = compute_rf_volatility(ticker)
+        garch_forecast = compute_garch_volatility(ticker)
 
-        # Normalize column names (case-insensitive)
-        data.columns = data.columns.str.lower()
+        # Ensure forecasts are valid before averaging
+        forecasts = [lstm_forecast, rf_forecast, garch_forecast]
+        valid_forecasts = [f for f in forecasts if f is not None]
 
-        # Ensure required columns exist
-        required_columns = ['close', 'log_return', 'gdp', 'interest_rates', 'p/e', 'sentiment_score', 'volatility']
-        for col in required_columns:
-            if col not in data.columns:
-                raise ValueError(f"Missing required column: {col}. Available columns: {list(data.columns)}")
+        if not valid_forecasts:
+            return None  # No valid forecasts
 
-        # Split dataset
-        train_size = int(len(data) * 0.8)
-        train, test = data[:train_size], data[train_size:]
-
-        # Prepare test data
-        X_test = test[['log_return', 'gdp', 'interest_rates', 'p/e', 'sentiment_score']]
-        y_test = test['volatility']
-
-        # Predict with LSTM model
-        y_pred_lstm = predict_volatility(ticker)
-
-        # Predict with Random Forest model
-        y_pred_rf = rf_model.predict(X_test)
-
-        # Get GARCH benchmark
-        garch_vol = garch_forecast(test)
-
-        # Combine predictions (Weighted average)
-        final_forecast = (y_pred_lstm[-1] + y_pred_rf[-1] + garch_vol) / 3
-
-        return round(final_forecast * 100, 2)  # Return as percentage
+        final_forecast = np.mean(valid_forecasts)
+        return final_forecast
     except Exception as e:
-        print(f"Error computing final forecast: {e}")
+        print(f"Error computing final volatility forecast: {e}")
         return None
