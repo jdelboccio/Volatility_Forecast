@@ -1,39 +1,47 @@
-import praw
+import requests
+import os
 import pandas as pd
 
-# Reddit API credentials (WARNING: Hardcoding credentials is not recommended)
+# Reddit API Credentials (Set these in your environment variables)
 REDDIT_CLIENT_ID = "YrhIHjfVx_gA_Gxxd3tuYg"
 REDDIT_CLIENT_SECRET = "T0pf2vkPLfJtpb7NYsmIrfoPmr9FNQ"
 REDDIT_USER_AGENT = "VolatilitySentimentAnalyzer"
 
-# Configure Reddit API
-reddit = praw.Reddit(
-    client_id=REDDIT_CLIENT_ID,
-    client_secret=REDDIT_CLIENT_SECRET,
-    user_agent=REDDIT_USER_AGENT
-)
-
-def fetch_reddit_sentiment(ticker: str):
+def get_reddit_token():
     """
-    Fetch Reddit sentiment for a given stock ticker.
-
-    :param ticker: Stock ticker symbol (e.g., 'AAPL')
-    :return: DataFrame with sentiment analysis
+    Fetch OAuth2 access token for Reddit API.
     """
-    try:
-        subreddit = reddit.subreddit("stocks")
-        posts = subreddit.search(ticker, limit=10)
+    url = "https://www.reddit.com/api/v1/access_token"
+    auth = (REDDIT_CLIENT_ID, REDDIT_CLIENT_SECRET)
+    headers = {"User-Agent": REDDIT_USER_AGENT}
+    data = {"grant_type": "client_credentials"}
 
-        sentiments = []
-        for post in posts:
-            sentiments.append({"Title": post.title, "Score": post.score})
+    response = requests.post(url, auth=auth, data=data, headers=headers)
+    if response.status_code == 200:
+        return response.json().get("access_token")
+    else:
+        print(f"⚠️ Error fetching Reddit token: {response.json()}")
+        return None
 
-        return pd.DataFrame(sentiments)
+def fetch_reddit_sentiment(ticker):
+    """
+    Fetch Reddit mentions & sentiment for a given stock ticker.
+    """
+    token = get_reddit_token()
+    if not token:
+        return pd.DataFrame({"Error": ["Failed to authenticate with Reddit API"]})
 
-    except Exception as e:
-        print(f"Error fetching Reddit sentiment for {ticker}: {e}")
-        return pd.DataFrame()  # Return an empty DataFrame on failure
+    url = f"https://oauth.reddit.com/search?q={ticker}&sort=new&limit=10"
+    headers = {
+        "Authorization": f"bearer {token}",
+        "User-Agent": REDDIT_USER_AGENT
+    }
 
-# Test the function
-if __name__ == "__main__":
-    print(fetch_reddit_sentiment("AAPL"))
+    response = requests.get(url, headers=headers)
+    if response.status_code == 200:
+        posts = response.json()["data"]["children"]
+        data = [{"title": post["data"]["title"], "score": post["data"]["score"], "url": post["data"]["url"]} for post in posts]
+        return pd.DataFrame(data)
+    else:
+        print(f"⚠️ Error fetching Reddit sentiment: {response.json()}")
+        return pd.DataFrame({"Error": ["Failed to fetch Reddit data"]})

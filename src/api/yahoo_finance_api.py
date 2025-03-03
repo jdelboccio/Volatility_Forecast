@@ -1,17 +1,18 @@
-import yfinance as yf
+import requests
 import pandas as pd
 
-def fetch_stock_data(ticker):
-    try:
-        stock = yf.Ticker(ticker)
-        data = stock.history(period="1mo")  # Fetch 1 month of data
-        if data.empty or 'Close' not in data.columns:
-            raise ValueError("Invalid response from Yahoo Finance API")
-        
-        data.reset_index(inplace=True)
-        data = data[['Date', 'Close']]
-        data.columns = ['date', 'close']  # Ensure lowercase column names for consistency
-        return data
-    except Exception as e:
-        print(f"Error fetching stock data: {e}")
-        return pd.DataFrame()  # Return empty DataFrame on failure
+API_KEY = "XYUCA96Q6KEN1T86"
+
+def fetch_stock_data(symbol):
+    url = f"https://www.alphavantage.co/query?function=TIME_SERIES_DAILY&symbol={symbol}&apikey={API_KEY}&outputsize=compact"
+    response = requests.get(url)
+    data = response.json()
+
+    if "Time Series (Daily)" not in data:
+        raise ValueError("Error fetching stock data from Alpha Vantage.")
+
+    df = pd.DataFrame.from_dict(data["Time Series (Daily)"], orient="index")
+    df = df.rename(columns={"4. close": "Close"})
+    df["Close"] = df["Close"].astype(float)
+    df.index = pd.to_datetime(df.index)
+    return df.sort_index()
