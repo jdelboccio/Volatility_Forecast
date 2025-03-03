@@ -1,63 +1,54 @@
 import os
 import sys
-import pandas as pd
 import numpy as np
+import pandas as pd
 from tensorflow.keras.models import load_model
 
-# Ensure Python can find 'models' when running directly
+# Ensure Python can find the 'models' directory
 sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), "..")))
 
+from models.lstm_model import predict_volatility
 from models.garch_model import garch_forecast
 from models.random_forest_model import rf_model
 
-# Load the trained LSTM model
-LSTM_MODEL_PATH = "src/models/lstm_volatility.h5"
-
 def compute_final_forecast(ticker):
     """
-    Compute final volatility forecast using LSTM, Random Forest, and GARCH models.
+    Compute 10-day volatility forecast for a given stock ticker.
     """
     try:
-        # Load the trained LSTM model
-        lstm_model = load_model(LSTM_MODEL_PATH)
-        lstm_model.compile(optimizer="adam", loss="mse", metrics=["mae"])  # Ensure model is compiled
-
-        # Load the stock data
+        # Load stock data
         data = pd.read_csv("data/stock_data.csv")
 
-        # Ensure required columns are present
-        required_columns = ['log_return', 'GDP', 'Interest_Rates', 'P/E', 'Sentiment_Score', 'volatility']
+        # Normalize column names (case-insensitive)
+        data.columns = data.columns.str.lower()
+
+        # Ensure required columns exist
+        required_columns = ['close', 'log_return', 'gdp', 'interest_rates', 'p/e', 'sentiment_score', 'volatility']
         for col in required_columns:
             if col not in data.columns:
-                data[col] = np.random.randn(len(data))  # Fill missing columns with random data
+                raise ValueError(f"Missing required column: {col}. Available columns: {list(data.columns)}")
 
-        # Split into training and testing sets
+        # Split dataset
         train_size = int(len(data) * 0.8)
-        test = data[train_size:]
+        train, test = data[:train_size], data[train_size:]
 
-        # Prepare the test data
-        X_test = test[['log_return', 'GDP', 'Interest_Rates', 'P/E', 'Sentiment_Score']]
+        # Prepare test data
+        X_test = test[['log_return', 'gdp', 'interest_rates', 'p/e', 'sentiment_score']]
         y_test = test['volatility']
 
-        # Prepare data for LSTM model
-        look_back = 30
-        X_test_lstm = np.array([X_test['log_return'].values[i-look_back:i] for i in range(look_back, len(X_test))])
-        X_test_lstm = np.reshape(X_test_lstm, (X_test_lstm.shape[0], X_test_lstm.shape[1], 1))
+        # Predict with LSTM model
+        y_pred_lstm = predict_volatility(ticker)
 
-        # Predict using LSTM
-        y_pred_lstm = lstm_model.predict(X_test_lstm).flatten() * 100  # ✅ Scaling fix
-
-        # Predict using Random Forest model
-        y_pred_rf = rf_model.predict(X_test) * 100  # ✅ Scaling fix
+        # Predict with Random Forest model
+        y_pred_rf = rf_model.predict(X_test)
 
         # Get GARCH benchmark
-        garch_vol = garch_forecast(test) * 100  # ✅ Scaling fix
+        garch_vol = garch_forecast(test)
 
-        # Combine predictions (taking average)
+        # Combine predictions (Weighted average)
         final_forecast = (y_pred_lstm[-1] + y_pred_rf[-1] + garch_vol) / 3
 
-        return round(final_forecast, 2)  # ✅ Ensure output is properly rounded
-
+        return round(final_forecast * 100, 2)  # Return as percentage
     except Exception as e:
-        print(f"❌ Error computing volatility forecast: {e}")
+        print(f"Error computing final forecast: {e}")
         return None
